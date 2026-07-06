@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect x="8" y="8" width="112" height="112" rx="20" fill="#1e1e2e"/>
+  <rect x="20" y="24" width="88" height="64" rx="8" fill="#11111b" stroke="#45475a" stroke-width="2"/>
+  <!-- grid -->
+  <g stroke="#313244" stroke-width="1">
+    <line x1="20" y1="40" x2="108" y2="40"/>
+    <line x1="20" y1="56" x2="108" y2="56"/>
+    <line x1="20" y1="72" x2="108" y2="72"/>
+  </g>
+  <!-- CPU line (green) -->
+  <polyline fill="none" stroke="#a6e3a1" stroke-width="3" stroke-linejoin="round"
+    points="20,78 34,60 48,66 62,44 76,52 90,34 108,42"/>
+  <!-- GPU line (blue) -->
+  <polyline fill="none" stroke="#89b4fa" stroke-width="3" stroke-linejoin="round"
+    points="20,84 34,80 48,70 62,74 76,62 90,66 108,54"/>
+  <!-- legend dots -->
+  <circle cx="34" cy="102" r="4" fill="#a6e3a1"/>
+  <circle cx="64" cy="102" r="4" fill="#89b4fa"/>
+  <circle cx="94" cy="102" r="4" fill="#cba6f7"/>
+</svg>
