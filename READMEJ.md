@@ -13,15 +13,24 @@ English version: see [README.md](README.md).
 | メモリ | `/proc/meminfo`                 | 使用量 / 総量 (GiB) と使用率 (%)  |
 | GPU    | `rocm-smi --showuse`            | AMD GPU 使用率 (%)               |
 | VRAM   | `rocm-smi --showmeminfo vram`   | 使用量 / 総量 (GiB) と使用率 (%)  |
+| NPU    | `xrt-smi examine`               | AMD Ryzen AI NPU 使用率 (%)      |
 
 各パネルは直近 **120 サンプル（約 60 秒）** の履歴を保持します。
 `rocm-smi` が使えない環境では、GPU / VRAM パネルは `N/A` と表示されます。
+
+NPU パネルは AMD Ryzen AI（XDNA）のテレメトリを `xrt-smi` から取得します。XRT
+には使用率 (%) の直接フィールドが無いため、使用率は **AIE 列占有率** — アクティ
+ブな AIE パーティションが占有する列数 ÷ 全列数（Strix Halo は 8 列）— から算出
+します。`xrt-smi` は `PATH`、無ければ `/opt/xilinx/xrt/bin` から探すため、XRT の
+`setup.sh` を読み込まずにドックから起動しても動作します。`xrt-smi` が未インストー
+ルの環境では、NPU グラフは `0`、ラベルは `N/A` になります。
 
 ## 必要環境
 
 - Python 3
 - [`flet`](https://pypi.org/project/flet/)（`pip install flet`）
 - `rocm-smi`（任意 — GPU / VRAM の取得にのみ必要）
+- AMD XRT の `xrt-smi`（任意 — NPU の取得にのみ必要）
 
 ## 使い方
 
@@ -48,7 +57,7 @@ cat > ~/.local/share/applications/rocmperf-sysmon.desktop <<'EOF'
 Type=Application
 Version=1.0
 Name=System Monitor
-Comment=CPU / メモリ / GPU / VRAM をリアルタイムに監視 (rocm-smi)
+Comment=CPU / メモリ / GPU / VRAM / NPU をリアルタイムに監視 (rocm-smi, xrt-smi)
 Exec=python3 /home/test/rocmperf/sysmon.py
 Path=/home/test/rocmperf
 Icon=rocmperf-sysmon

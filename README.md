@@ -13,15 +13,25 @@ GNOME-System-Monitor-style line charts and updates them every 0.5 seconds.
 | Memory | `/proc/meminfo`                 | Used / total (GiB) + usage (%) |
 | GPU    | `rocm-smi --showuse`            | AMD GPU utilization (%)        |
 | VRAM   | `rocm-smi --showmeminfo vram`   | Used / total (GiB) + usage (%) |
+| NPU    | `xrt-smi examine`               | AMD Ryzen AI NPU usage (%)     |
 
 Each panel keeps the last **120 samples (~60 seconds)** of history.
 If `rocm-smi` is not available, the GPU and VRAM panels simply show `N/A`.
+
+The NPU panel reads AMD Ryzen AI (XDNA) telemetry via `xrt-smi`. Since XRT
+does not expose a direct utilization percentage, usage is derived from **AIE
+column occupancy** — the number of columns held by active AIE partitions
+divided by the total columns (8 on Strix Halo). `xrt-smi` is located on
+`PATH` or, failing that, at `/opt/xilinx/xrt/bin`, so it works even when the
+app is launched from the dock without sourcing XRT's `setup.sh`. If `xrt-smi`
+is not installed, the NPU graph stays at `0` and its label shows `N/A`.
 
 ## Requirements
 
 - Python 3
 - [`flet`](https://pypi.org/project/flet/) (`pip install flet`)
 - `rocm-smi` (optional — required only for GPU / VRAM readings)
+- `xrt-smi` from AMD XRT (optional — required only for NPU readings)
 
 ## Usage
 
@@ -48,7 +58,7 @@ cat > ~/.local/share/applications/rocmperf-sysmon.desktop <<'EOF'
 Type=Application
 Version=1.0
 Name=System Monitor
-Comment=Real-time CPU / memory / GPU / VRAM monitor (rocm-smi)
+Comment=Real-time CPU / memory / GPU / VRAM / NPU monitor (rocm-smi, xrt-smi)
 Exec=python3 /home/test/rocmperf/sysmon.py
 Path=/home/test/rocmperf
 Icon=rocmperf-sysmon
