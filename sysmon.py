@@ -9,6 +9,7 @@ import asyncio
 import fcntl
 import json
 import os
+import shutil
 import sys
 import time
 from collections import deque
@@ -86,6 +87,76 @@ async def _read_rocm():
     vused = _num("VRAM Total Used Memory (B)")
     vram_pct = vused / vtot * 100.0
     return gpu, vram_pct, vused / 1024**3, vtot / 1024**3
+
+
+def _find_xrt_smi():
+    """xrt-smi の実行パスを返す。見つからなければ None。
+
+    dock ランチャ起動時は PATH に XRT の bin が含まれないため、
+    標準インストール先 /opt/xilinx/xrt/bin も探索する。"""
+    exe = shutil.which("xrt-smi")
+    if exe:
+        return exe
+    fallback = "/opt/xilinx/xrt/bin/xrt-smi"
+    return fallback if os.path.exists(fallback) else None
+
+
+async def _read_npu():
+    """xrt-smi を呼び出して NPU 使用率を返す。
+
+    XRT には rocm-smi のような「使用率 %」フィールドが無いため、
+    アクティブな AIE パーティションが占有する列数 / 全列数 を使用率とみなす。
+    返り値: (npu%, used_cols, total_cols) / 未インストール・失敗時は None。"""
+    exe = _find_xrt_smi()
+    if exe is None:
+        return None
+
+    # XRT のライブラリパスを補う (setup.sh 非 source でも動くように)
+    env = dict(os.environ)
+    xrt_root = os.path.dirname(os.path.dirname(exe))  # .../xilinx/xrt
+    env["XILINX_XRT"] = xrt_root
+    env["LD_LIBRARY_PATH"] = os.path.join(xrt_root, "lib") + os.pathsep + env.get("LD_LIBRARY_PATH", "")
+
+    # xrt-smi は JSON を stdout に流せず -o のファイルにのみ出力する
+    runtime = os.environ.get("XDG_RUNTIME_DIR", "/tmp")
+    out_file = os.path.join(runtime, "rocm-sysmon-npu.json")
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            exe, "examine", "-r", "all", "-f", "JSON", "-o", out_file, "--force",
+            env=env,
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+        )
+        await proc.communicate()
+        with open(out_file) as f:
+            data = json.load(f)
+        dev = data["devices"][0]
+    except Exception:
+        return None
+
+    def _int(v, default=0):
+        try:
+            return int(v)
+        except (ValueError, TypeError):
+            return default
+
+    total_cols = 0
+    for plat in dev.get("platforms", []):
+        total_cols = _int(plat.get("static_region", {}).get("total_columns"))
+        if total_cols:
+            break
+    if not total_cols:
+        total_cols = 8  # Strix Halo は 8 列
+
+    # partitions はアイドル時 "" (空文字)、稼働中はパーティションのリスト
+    used_cols = 0
+    parts = dev.get("aie_partitions", {}).get("partitions", "")
+    if isinstance(parts, list):
+        for p in parts:
+            if p.get("hw_contexts"):  # hw_context を持つ = 割り当て稼働中
+                used_cols += _int(p.get("num_cols"))
+
+    pct = min(100.0, used_cols / total_cols * 100.0) if total_cols else 0.0
+    return pct, used_cols, total_cols
 
 
 class Graph:
@@ -175,7 +246,7 @@ class Graph:
 async def main(page: ft.Page):
     page.title = "System Monitor"
     page.window.width = 460
-    page.window.height = 680
+    page.window.height = 820
     page.padding = 12
     page.spacing = 0
 
@@ -184,6 +255,7 @@ async def main(page: ft.Page):
         "mem": Graph("メモリ", ft.Colors.RED),
         "gpu": Graph("GPU", ft.Colors.BLUE),
         "vram": Graph("VRAM", ft.Colors.PURPLE),
+        "npu": Graph("NPU", ft.Colors.ORANGE),
     }
     page.add(ft.Column([g.build() for g in graphs.values()],
                        scroll=ft.ScrollMode.AUTO, expand=True))
@@ -214,6 +286,14 @@ async def main(page: ft.Page):
             gpu, vram_pct, vused_g, vtot_g = rocm
             graphs["gpu"].push(gpu, f"{gpu:.1f} %")
             graphs["vram"].push(vram_pct, f"{vram_pct:.1f} %", f"{vused_g:.1f} / {vtot_g:.1f} GiB")
+
+        # NPU (xrt-smi)。未インストール時は graph=0 / text=N/A
+        npu = await _read_npu()
+        if npu is None:
+            graphs["npu"].push(0.0, "N/A")
+        else:
+            npu_pct, used_c, total_c = npu
+            graphs["npu"].push(npu_pct, f"{npu_pct:.1f} %", f"{used_c} / {total_c} cols")
 
         await asyncio.sleep(max(0.0, UPDATE_INTERVAL - (time.monotonic() - t0)))
 
